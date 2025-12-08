@@ -8,7 +8,11 @@
 #include <cstdlib>
 
 #include <fb.hpp>
-#include <hls_math.h>
+#ifdef __SYNTHESIS__
+ #include <hls_math.h>
+#else
+ #include <cmath>
+#endif
 #include <math/math.hpp>
 #include <math/triangle.hpp>
 #include <mem_layout.hpp>
@@ -163,7 +167,7 @@ render_y:
             if (bary00.x >= 0 && bary00.y >= 0 && bary00.z >= 0 &&
                 z00 <= zbuf[y * FB_TILE_WIDTH + x][0]) {
                 zbuf[y * FB_TILE_WIDTH + x][0] = z00;
-                we |= 1;
+                we |= (ap_uint<FB_SAMPLES_PER_PIXEL>)1;
             }
 
             Vec3i bary10 = bary00 - dbary_u;
@@ -171,7 +175,7 @@ render_y:
             if (bary10.x >= 0 && bary10.y >= 0 && bary10.z >= 0 &&
                 z10 <= zbuf[y * FB_TILE_WIDTH + x][1]) {
                 zbuf[y * FB_TILE_WIDTH + x][1] = z10;
-                we |= 2;
+                we |= (ap_uint<FB_SAMPLES_PER_PIXEL>)2;
             }
 
             Vec3i bary11 = bary10 + dbary_v;
@@ -179,7 +183,7 @@ render_y:
             if (bary11.x >= 0 && bary11.y >= 0 && bary11.z >= 0 &&
                 z11 <= zbuf[y * FB_TILE_WIDTH + x][2]) {
                 zbuf[y * FB_TILE_WIDTH + x][2] = z11;
-                we |= 4;
+                we |= (ap_uint<FB_SAMPLES_PER_PIXEL>)4;
             }
 
             Vec3i bary01 = bary11 + dbary_u;
@@ -187,7 +191,7 @@ render_y:
             if (bary01.x >= 0 && bary01.y >= 0 && bary01.z >= 0 &&
                 z01 <= zbuf[y * FB_TILE_WIDTH + x][3]) {
                 zbuf[y * FB_TILE_WIDTH + x][3] = z01;
-                we |= 8;
+                we |= (ap_uint<FB_SAMPLES_PER_PIXEL>)8;
             }
 
             if (we) {
@@ -217,13 +221,21 @@ static void deferred_shading(uint32_t *tile,
                 Vec3f pos = buf[y * FB_TILE_WIDTH + x][i].pos;
                 Vec3f n = buf[y * FB_TILE_WIDTH + x][i].n;
 
+                if (n.x == 0 && n.y == 0 && n.z == 0) {
+                    continue; 
+                }
+
                 Vec3f dir = Vec3f(0, 0, 0) - pos;
                 fixed intensity = dot(dir, n);
                 if (intensity < 0)
                     intensity = 0;
 
+#ifdef __SYNTHESIS__
                 fixed len = hls::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-
+#else
+                fixed sq_norm = dir.x * dir.x + dir.y * dir.y + dir.z * dir.z;
+                fixed len = (fixed)std::sqrt((double)sq_norm);
+#endif
                 if (len > (fixed)0.001) {
                     intensity = intensity / len;
                 } else {

@@ -1,10 +1,14 @@
 // Original code (c) 2023 Alan Jian
 // Licensed under MIT License
+//
+// Modifications (c) 2025 jin11109
+// Licensed under MIT License
 
 #include <fb.hpp>
 
 static uint32_t tile_buf[FB_WIDTH * FB_TILE_HEIGHT];
 
+#ifdef __SYNTHESIS__
 void fb_write_tile(Vec2i pos, const uint32_t *tile) {
 write_tile_x:
     for (int y = 0; y < FB_TILE_HEIGHT; y++) {
@@ -15,7 +19,9 @@ write_tile_x:
         }
     }
 }
+#endif
 
+#ifdef __SYNTHESIS__
 void fb_flush_tiles(hls::burst_maxi<ap_uint<128>> vram, fb_id_t fb_id,
                     int line) {
 flush_tiles_y:
@@ -37,3 +43,4 @@ flush_tiles_y:
         vram.write_response();
     }
 }
+#endif
