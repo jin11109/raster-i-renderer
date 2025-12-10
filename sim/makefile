@@ -20,7 +20,7 @@ OBJS := $(patsubst $(SRC_DIR)/%.cpp, $(OUT_DIR)/%.o, $(SRCS))
 
 .PHONY: all download_types clean
 
-all: download $(OUT_DIR)/$(EXE)
+all: download_types $(OUT_DIR)/$(EXE)
 
 # Download HLS headers
 download_types:
