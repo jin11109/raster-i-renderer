@@ -1,5 +1,8 @@
 // Copyright (C) 2023 Alan Jian (alanjian85@outlook.com)
 // SPDX-License-Identifier: MIT
+//
+// Modifications (c) 2025 jin11109
+// Licensed under MIT License
 
 import chisel3._
 import chisel3.util._
@@ -29,23 +32,11 @@ object Vram {
 
   val dataBytes = dataWidth / 8
   val beatsSize = Axi.size(dataBytes)
-}
 
-class vram extends BlackBox {
-  val io = IO(new Bundle {
-    val clk   = Input(Bool())
-    val reset = Input(Bool())
-
-    val graphics_axi     = new WrAxiExt(Vram.addrWidth, Vram.dataWidth)
-    val graphics_aclk    = Input(Bool())
-    val graphics_aresetn = Input(Bool())
-
-    val display_axi     = new RdAxiExt(Vram.addrWidth, Vram.dataWidth)
-    val display_aclk    = Input(Bool())
-    val display_aresetn = Input(Bool())
-
-    val ddr3 = new Ddr3Ext
-  })
+  val dataBytesWidth = log2Up(dataBytes)
+  
+  // Vram size 256 MB
+  val depth = 256 * 1024 * 1024 / 16
 }
 
 class Vram extends Module {
@@ -53,27 +44,90 @@ class Vram extends Module {
     val axiGraphics   = new WrAxiExtUpper(Vram.addrWidth, Vram.dataWidth)
     val aclkGraphics  = Input(Clock())
     val arstnGraphics = Input(Reset())
-
-    val axiDisplay   = Flipped(new RdAxi(Vram.addrWidth, Vram.dataWidth))
-    val aclkDisplay  = Input(Clock())
-    val arstnDisplay = Input(Reset())
+    
+    /* Temporarily disable display logic */
+    // val axiDisplay   = Flipped(new RdAxi(Vram.addrWidth, Vram.dataWidth))
+    // val aclkDisplay  = Input(Clock())
+    // val arstnDisplay = Input(Reset())
 
     val ddr3 = new Ddr3Ext
+
+    /* Debig interface */
+    val debug_idx  = Input(UInt(32.W))
+    val debug_data = Output(UInt(128.W))
   })
 
-  val vram = Module(new vram)
-  vram.io.clk   := clock.asBool
-  vram.io.reset := reset.asBool
+  val mem = Mem(Vram.depth, UInt(Vram.dataWidth.W))
 
-  io.axiGraphics.connect(vram.io.graphics_axi)
-  vram.io.graphics_aclk    := io.aclkGraphics.asBool
-  vram.io.graphics_aresetn := io.arstnGraphics.asBool
+  // Directly access to momory for debug
+  io.debug_data := mem.read(io.debug_idx)
 
-  vram.io.display_axi.connect(io.axiDisplay)
-  vram.io.display_aclk    := io.aclkDisplay.asBool
-  vram.io.display_aresetn := io.arstnDisplay.asBool
+  /* AXI Status Registers */
+  // Stores the current write address (auto-increments during Burst)
+  val addrReg = RegInit(0.U(Vram.addrWidth.W))
+  // Indicates if a Write Transaction is in progress (from receiving AW until WLAST)
+  val busy    = RegInit(false.B)
+  // Response
+  val b_valid = RegInit(false.B)
 
-  io.ddr3 <> vram.io.ddr3
+  /* Address Channel (AW Channel) */
+  // Only accept new address when not busy and response channel is idle
+  io.axiGraphics.AWREADY := !busy && !b_valid
+  
+  when(io.axiGraphics.AWVALID && io.axiGraphics.AWREADY) {
+    busy    := true.B
+    addrReg := io.axiGraphics.AWADDR
+  }
+
+  /* Data Channel (W Channel) */
+  // Ready to receive data as long as we are in busy state
+  io.axiGraphics.WREADY := busy
+  
+  when(io.axiGraphics.WVALID && io.axiGraphics.WREADY) {
+    /* 
+     * AXI protocol uses Byte Addressing
+     * Chisel Memstores data in units of words (a complete line of data).
+     * mem definition means UInt(128.W) that each line stores 128 bits, which
+     * means 1 word = 128 bits
+     * So, convert the "Byte Address" into the "Word Index"
+     *     qual to convert 8 bits index into 128 bits index 
+     */
+    mem.write(addrReg >> Vram.dataBytesWidth, io.axiGraphics.WDATA)
+    
+    // Auto-increment address (prepare for the next Burst data)
+    addrReg := addrReg + (Vram.dataWidth / 8).U 
+
+    // If this is the last data beat (WLAST), end busy state and prepare to
+    // send response
+    when(io.axiGraphics.WLAST) {
+      busy    := false.B
+      b_valid := true.B
+    }
+  }
+
+  /* Response Channel (B Channel) */
+  io.axiGraphics.BVALID := b_valid
+  io.axiGraphics.BRESP  := 0.U // OKAY
+  io.axiGraphics.BID    := 0.U 
+
+  // When Master acknowledges the response, pull down BVALID to complete the transaction
+  when(io.axiGraphics.BVALID && io.axiGraphics.BREADY) {
+    b_valid := false.B
+  }
+
+  /* DDR3 Stub */
+  io.ddr3.addr    := 0.U
+  io.ddr3.ba      := 0.U
+  io.ddr3.cas_n   := true.B
+  io.ddr3.ck_n    := 0.U
+  io.ddr3.ck_p    := 0.U
+  io.ddr3.cke     := 0.U
+  io.ddr3.cs_n    := true.B
+  io.ddr3.dm      := 0.U
+  io.ddr3.odt     := 0.U
+  io.ddr3.ras_n   := true.B
+  io.ddr3.reset_n := true.B
+  io.ddr3.we_n    := true.B
 }
 
 object FbRGB extends RGBFactory(8, 8, 8)
@@ -178,45 +232,90 @@ class FbWriter extends Module {
     val done = Output(Bool())
   })
 
+  /* Address Channel (AW Channel) */
   val addrValid = RegInit(false.B)
   val addr      = RegInit(0.U(Fb.addrWidth.W))
-  val addrBegan = RegInit(false.B)
+  val addrBegan = RegInit(false.B) // 用來控制是否允許發送地址
   val done      = RegInit(false.B)
+
+  /* Data Channel (W Channel) */
+  val idx      = RegInit(0.U(log2Up(Fb.nrIndices).W))
+  val dataAddr = RegInit(0.U(Fb.addrWidth.W))
+  val last     = idx === Fb.maxIdx.U
+
+  /* Address channel logic */
   io.vram.addr.valid      := addrValid
   io.vram.addr.bits.id    := DontCare
+  // Calculate physical address: Combine FrameBuffer ID with Offset, shifted by pixel size
   io.vram.addr.bits.addr  := (io.fbId ## addr) << log2Up(FbRGB.nrBytes)
   io.vram.addr.bits.len   := Fb.maxIdx.U
   io.vram.addr.bits.size  := Vram.beatsSize
   io.vram.addr.bits.burst := Axi.Burst.incr
+
+  // Start Trigger: Only trigger if "not started" (!addrBegan) and a request exists
   when (io.req.valid && !addrBegan) {
     addrBegan := true.B
     addrValid := true.B
     done      := false.B
   }
+
+  // Address handshake
   when (addrValid && io.vram.addr.ready) {
     addrValid := false.B
     addr      := addr + Fb.width.U
     when (addr === Fb.lastLine.U) {
       addr := 0.U
-      done := true.B
     }
   }
-  io.done := done
 
-  val idx  = RegInit(0.U(log2Up(Fb.nrIndices).W))
-  val last = idx === Fb.maxIdx.U
+  /* Data channel logic */
   io.vram.data.valid     := io.req.valid
   io.vram.data.bits.data := io.req.bits.pix.reverse.map(_.encodeAligned()).reduce(_ ## _)
   io.vram.data.bits.strb := Fill(Vram.dataBytes, 1.U)
   io.vram.data.bits.last := last
   io.req.ready := io.vram.data.ready
+
+  // Data handshake
   when (io.req.valid && io.vram.data.ready) {
     idx := idx + 1.U
+    
+    // End of Burst (Row Finished)
     when (last) {
-      idx       := 0.U
-      addrBegan := false.B
+      idx := 0.U
+      
+      dataAddr := dataAddr + Fb.width.U
+      
+      // Distinguish between "End of Frame" and "End of Row"
+      when (dataAddr === Fb.lastLine.U) {
+        // Frame Completed
+        dataAddr := 0.U
+        done     := true.B
+        /*
+         * IMPORTANT: Keep 'addrBegan' true here.
+         * This "locks" the address logic, preventing the generation of the 
+         * address for the next frame until the Renderer stops its request.
+         */
+        addrBegan := true.B 
+      } .otherwise {
+        // Just a Row Completed, allow the next row address to be sent
+        addrBegan := false.B 
+      }
     }
   }
 
+  /*
+   * Force a state reset when the Renderer enters Idle (req goes low)
+   * This ensures that when Frame 1 starts, all states are clean.
+   */
+  when (!io.req.valid) {
+    addrBegan := false.B
+    done      := false.B
+    addrValid := false.B
+    addr      := 0.U
+    dataAddr  := 0.U
+    idx       := 0.U
+  }
+  
+  io.done := done
   io.vram.resp.ready := true.B
 }

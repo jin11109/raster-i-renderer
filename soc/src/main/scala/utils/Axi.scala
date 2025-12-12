@@ -76,6 +76,7 @@ class RdWrAxi(val addrWidth: Int, val dataWidth: Int, val idWidth: Int = 0) exte
 }
 
 class RdAxiExt(addrWidth: Int, dataWidth: Int, idWidth: Int = 0) extends Bundle {
+  /* Read Address */
   val arid     = Input(UInt(idWidth.W))
   val araddr   = Input(UInt(addrWidth.W))
   val arlen    = Input(UInt(8.W))
@@ -89,6 +90,7 @@ class RdAxiExt(addrWidth: Int, dataWidth: Int, idWidth: Int = 0) extends Bundle 
   val arvalid  = Input(Bool())
   val arready  = Output(Bool())
 
+  /* Read Data */
   val rid    = Output(UInt(idWidth.W))
   val rdata  = Output(UInt(dataWidth.W))
   val rresp  = Output(UInt(2.W))
@@ -172,10 +174,14 @@ class WrAxiExt(addrWidth: Int, dataWidth: Int, idWidth: Int = 0) extends Bundle 
 }
 
 class WrAxiExtUpper(addrWidth: Int, dataWidth: Int, idWidth: Int = 0) extends Bundle {
+  /* Write Address */
   val AWID     = Input(UInt(idWidth.W))
   val AWADDR   = Input(UInt(addrWidth.W))
+  // The decision to proceed involves several transfers (Beats).
   val AWLEN    = Input(UInt(8.W))
+  // Determines the width (Bytes) of each Transfer.
   val AWSIZE   = Input(UInt(3.W))
+  // Determines how the address is calculated (Fixed, Increment, Wrap).
   val AWBURST  = Input(UInt(2.W))
   val AWLOCK   = Input(Bool())
   val AWCACHE  = Input(UInt(4.W))
@@ -185,12 +191,14 @@ class WrAxiExtUpper(addrWidth: Int, dataWidth: Int, idWidth: Int = 0) extends Bu
   val AWVALID  = Input(Bool())
   val AWREADY  = Output(Bool())
 
+  /* Write Data */
   val WDATA  = Input(UInt(dataWidth.W))
   val WSTRB  = Input(UInt((dataWidth / 8).W))
   val WLAST  = Input(Bool())
   val WVALID = Input(Bool())
   val WREADY = Output(Bool())
 
+  /* Write Response */
   val BID    = Output(UInt(idWidth.W))
   val BRESP  = Output(UInt(2.W))
   val BVALID = Output(Bool())
