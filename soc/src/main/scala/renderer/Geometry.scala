@@ -229,13 +229,13 @@ class PreprocTriangles extends Module {
   val reqIdx = RegInit(0.U(2.W))
   io.bbWritePort.data.bb  := triangle2.aabb()
   
-  val sWaitRomData :: sWriteTriangle :: sWaitResp :: sExportBB :: sDone :: sNextPoly :: Nil = Enum(6)
+  val sWaitRomData :: sWriteTriangle :: sWaitResp :: sExportBB :: sDone :: Nil = Enum(5)
   val state = RegInit(sWaitRomData)
 
   switch (state) {
     is (sWaitRomData) {
       when(io.start) {
-         state := sWriteTriangle
+        state := sWriteTriangle
       }
     }
 
@@ -270,12 +270,8 @@ class PreprocTriangles extends Module {
       when (rIdx + 1.U === RomData.nrMeshTriangles.U) {
         state := sDone
       } .otherwise {
-        state := sNextPoly
+        state := sWaitRomData
       }
-    }
-
-    is (sNextPoly) {
-      state := sWaitRomData
     }
 
     is (sDone) {

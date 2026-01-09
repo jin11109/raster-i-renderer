@@ -1,6 +1,5 @@
 import chisel3._
 import chisel3.util._
-import chisel3.util.experimental.loadMemoryFromFile
 import chisel3.util.experimental.loadMemoryFromFileInline
 import implicits._
 
@@ -70,12 +69,13 @@ class DataLoader extends Module {
   io.geo.normData(1) := Fixed24_13.fromRaw(normRaw(47, 24).asSInt)
   io.geo.normData(2) := Fixed24_13.fromRaw(normRaw(71, 48).asSInt)
 
+  /* Disable now because of unused data */
   /* Texture (32-bit wide) */
   // val texMem = SyncReadMem(65536, UInt(32.W))
   // loadMemoryFromFileInline(texMem, resPath + "texture.hex")
 
   // val texRaw = texMem.read(io.tex.addr)
-  // // Unpack: 00 | R | G | B (依據 gen_hex.cpp 的修正)
+  // // Unpack: 00 | R | G | B
   // io.tex.data.b       := texRaw(7, 0)
   // io.tex.data.g       := texRaw(15, 8)
   // io.tex.data.r       := texRaw(23, 16)

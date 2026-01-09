@@ -309,7 +309,7 @@ void dump_geo() {
     }
     ofs.close();
 
-    // Dump Bounding Boxes (補齊部分)
+    // Dump Bounding Boxes
     ofs.open("bounding_boxes.txt");
     if (!ofs.is_open()) {
         std::cerr << "Failed to open bounding_boxes.txt\n";

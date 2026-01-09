@@ -38,7 +38,6 @@ class MemReader[T <: Data](gen: T, depth: Int) extends Bundle {
   val resp = Flipped(Valid(gen.cloneType))
 }
 
-
 class GenericRam[T <: Data](gen: T, depth: Int) extends Module {
   val io = IO(new Bundle {
     val writer = Flipped(new MemWriter(gen, depth))
